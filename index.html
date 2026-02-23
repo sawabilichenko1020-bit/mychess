@@ -30,7 +30,7 @@
 
         // Настройка сокетов (пока localhost для тестов)
         // Когда выложишь бэкенд на Render/Railway, замени адрес здесь!
-        var socket = new WebSocket("ws://localhost:8000/ws/game_1");
+        var socket = new WebSocket("wss://chess-server-g42d.onrender.com/ws/game_1");
 
         function onDrop(source, target) {
             var move = game.move({
@@ -82,4 +82,5 @@
         updateStatus();
     </script>
 </body>
+
 </html>
