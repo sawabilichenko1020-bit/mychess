@@ -30,7 +30,18 @@
 
         // Настройка сокетов (пока localhost для тестов)
         // Когда выложишь бэкенд на Render/Railway, замени адрес здесь!
-        var socket = new WebSocket("wss://chess-server-g42d.onrender.com/ws/game_1");
+        // Код для автоматического определения комнаты
+const urlParams = new URLSearchParams(window.location.search);
+// Пробуем достать параметр из ссылки Telegram (?startapp=room123)
+let roomId = urlParams.get('tgWebAppStartParam');
+
+// Если ссылки с параметром нет (зашли просто так), создаем общую комнату
+if (!roomId) {
+    roomId = 'main_lobby';
+}
+
+// Подключаемся к серверу в конкретную комнату
+var socket = new WebSocket(`wss://chess-server-g42d.onrender.com/ws/${roomId}`);
 
         function onDrop(source, target) {
             var move = game.move({
@@ -84,3 +95,4 @@
 </body>
 
 </html>
+
