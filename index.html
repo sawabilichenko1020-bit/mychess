@@ -1,98 +1,93 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chess Mini App</title>
-    
+    <meta charset="utf-8">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
-    <style>
-        body { background-color: #1c1c1c; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-        #myBoard { width: 90vw; max-width: 400px; margin-bottom: 20px; }
-        .status-container { text-align: center; font-size: 1.2rem; }
-    </style>
-
     <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
     <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <style>
+        body { background: #2c3e50; color: white; font-family: sans-serif; margin: 0; padding: 10px; text-align: center; }
+        #board { margin: 10px auto; width: 95vw; max-width: 400px; }
+        .info { background: rgba(0,0,0,0.3); padding: 10px; border-radius: 10px; margin: 5px; }
+        /* Подсветка */
+        .highlight-white { box-shadow: inset 0 0 3px 3px yellow; }
+        .highlight-black { box-shadow: inset 0 0 3px 3px blue; }
+        /* Анимация входа */
+        #overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: black; z-index: 100; display: flex; align-items: center; justify-content: center; transition: 1s; }
+        .hidden { opacity: 0; pointer-events: none; }
+    </style>
 </head>
 <body>
 
-    <div id="myBoard"></div>
-    <div class="status-container">
-        <p id="status">Загрузка...</p>
-    </div>
+    <div id="overlay"><h1>Подключение к партии...</h1></div>
+
+    <div class="info" id="opp-info">Ожидание противника...</div>
+    <div id="board"></div>
+    <div class="info" id="my-info">Вы: Загрузка...</div>
 
     <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomId = urlParams.get('tgWebAppStartParam') || 'lobby';
+        const user = tg.initDataUnsafe.user || { id: "guest", first_name: "Гость" };
+
         var board = null;
         var game = new Chess();
-        var $status = $('#status');
+        var myRole = null; // 'w', 'b' или 'viewer'
+        
+        // Звуки
+        const moveSnd = new Audio('https://images.chesscomfiles.com/chess-themes/pieces/neo/sounds/move-self.mp3');
 
-        // Настройка сокетов (пока localhost для тестов)
-        // Когда выложишь бэкенд на Render/Railway, замени адрес здесь!
-        // Код для автоматического определения комнаты
-const urlParams = new URLSearchParams(window.location.search);
-// Пробуем достать параметр из ссылки Telegram (?startapp=room123)
-let roomId = urlParams.get('tgWebAppStartParam');
+        // WebSocket
+        const socket = new WebSocket(`wss://chess-server-ТВОЙ-ID.onrender.com/ws/${roomId}?user_id=${user.id}&name=${user.first_name}`);
 
-// Если ссылки с параметром нет (зашли просто так), создаем общую комнату
-if (!roomId) {
-    roomId = 'main_lobby';
-}
+        socket.onmessage = function(event) {
+            const msg = JSON.parse(event.data);
 
-// Подключаемся к серверу в конкретную комнату
-var socket = new WebSocket(`wss://chess-server-g42d.onrender.com/ws/${roomId}`);
+            if (msg.type === 'init') {
+                myRole = msg.role;
+                document.getElementById('my-info').innerText = `Вы: ${user.first_name} (${myRole === 'w' ? 'Белые' : 'Черные'})`;
+                document.getElementById('overlay').innerHTML = `<h1>Вы играете за ${myRole === 'w' ? 'БЕЛЫХ' : 'ЧЕРНЫХ'}</h1>`;
+                setTimeout(() => document.getElementById('overlay').classList.add('hidden'), 2000);
+                if (myRole === 'b') board.orientation('black');
+            } else {
+                // Если пришел ход от другого игрока
+                game.move(msg);
+                board.position(game.fen());
+                moveSnd.play();
+            }
+        };
 
-        function onDrop(source, target) {
-            var move = game.move({
-                from: source,
-                to: target,
-                promotion: 'q'
-            });
+        function onDragStart (source, piece, position, orientation) {
+            if (game.game_over()) return false;
+            // Не даем ходить если не твой цвет или не твой ход
+            if (myRole === 'viewer') return false;
+            if ((myRole === 'w' && piece.search(/^b/) !== -1) ||
+                (myRole === 'b' && piece.search(/^w/) !== -1)) return false;
+            if ((game.turn() === 'w' && myRole !== 'w') || (game.turn() === 'b' && myRole !== 'b')) return false;
+        }
 
+        function onDrop (source, target) {
+            var move = game.move({ from: source, to: target, promotion: 'q' });
             if (move === null) return 'snapback';
-
-            updateStatus();
             
-            // Отправляем ход сопернику
+            moveSnd.play();
             socket.send(JSON.stringify(move));
         }
-
-        function updateStatus() {
-            var status = '';
-            var moveColor = (game.turn() === 'b') ? 'Черных' : 'Белых';
-
-            if (game.in_checkmate()) {
-                status = 'Мат! ' + moveColor + ' проиграли.';
-            } else if (game.in_draw()) {
-                status = 'Ничья!';
-            } else {
-                status = 'Ход ' + moveColor;
-                if (game.in_check()) status += ' (Шах!)';
-            }
-
-            $status.html(status);
-        }
-
-        // Получаем ход от соперника
-        socket.onmessage = function(event) {
-            var move = JSON.parse(event.data);
-            game.move(move);
-            board.position(game.fen());
-            updateStatus();
-        };
 
         var config = {
             draggable: true,
             position: 'start',
+            onDragStart: onDragStart,
             onDrop: onDrop,
             pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png'
         };
-
-        board = ChessBoard('myBoard', config);
-        updateStatus();
+        board = Chessboard('board', config);
     </script>
 </body>
-
 </html>
-
