@@ -44,7 +44,7 @@
         const moveSnd = new Audio('https://images.chesscomfiles.com/chess-themes/pieces/neo/sounds/move-self.mp3');
 
         // WebSocket
-        const socket = new WebSocket(`wss://chess-server-ТВОЙ-ID.onrender.com/ws/${roomId}?user_id=${user.id}&name=${user.first_name}`);
+        const socket = new WebSocket(`wss://chess-server-g42d.onrender.com/ws/${roomId}?user_id=${user.id}&name=${user.first_name}`);
 
         socket.onmessage = function(event) {
             const msg = JSON.parse(event.data);
@@ -91,3 +91,4 @@
     </script>
 </body>
 </html>
+
